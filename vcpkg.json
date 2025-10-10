@@ -1,0 +1,9 @@
+{
+  "name": "train-tracks-vertex-diameter",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "boost-lambda2",
+    "pcg",
+    "nlohmann-json"
+  ]
+}

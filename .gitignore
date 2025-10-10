@@ -1,3 +1,18 @@
+# VSCode
+.vscode
+
+# CMake
+CMakeUserPresets.json
+
+# Build files
+build/
+
+# VCPKG
+vcpkg_installed/
+
+# Executable
+train_tracks_vertex_diameter
+
 # Prerequisites
 *.d
 
