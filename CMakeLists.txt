@@ -10,13 +10,23 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 find_path(PCG_INCLUDE_DIR NAMES pcg_random.hpp)
+
 find_package(nlohmann_json CONFIG REQUIRED)
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(gmp REQUIRED IMPORTED_TARGET gmp)
+pkg_check_modules(mpfr REQUIRED IMPORTED_TARGET mpfr)
+pkg_check_modules(FLINT REQUIRED IMPORTED_TARGET flint)
 
 add_executable(train_tracks
   src/main.cpp
 )
 target_include_directories(train_tracks PRIVATE include)
 target_include_directories(train_tracks PRIVATE ${PCG_INCLUDE_DIR})
+# target_include_directories(train_tracks PRIVATE ${FLINT_INCLUDE_DIR})
+target_link_libraries(train_tracks PRIVATE PkgConfig::gmp)
+target_link_libraries(train_tracks PRIVATE PkgConfig::mpfr)
+target_link_libraries(train_tracks PRIVATE PkgConfig::FLINT)
 
 
 # Build-type-specific flags

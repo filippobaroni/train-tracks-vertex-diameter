@@ -5,6 +5,9 @@
 #include <boost/lambda2.hpp>
 #include <numeric>
 #include <random>
+#include <flint/fmpz_mat.h>
+#include <flint/fmpz.h>
+#include <set>
 
 using namespace std::ranges;
 using namespace boost::lambda2;
@@ -169,7 +172,7 @@ void TrainTrack::compute_complementary_regions(const TrainTrackOptions &options)
                 {
                     punctures = 2;
                 }
-                else if (cusps == 1)
+                else if (cusps == 1 || cusps == 2)
                 {
                     punctures = 1;
                 }
@@ -177,6 +180,153 @@ void TrainTrack::compute_complementary_regions(const TrainTrackOptions &options)
             complementary_regions.push_back({cusps, punctures});
         }
     }
+}
+
+template <std::integral T>
+std::vector<Measure<T>> TrainTrack::get_vertex_measures() const
+{
+    if (!is_finalized)
+    {
+        throw std::runtime_error("Cannot get vertex measures of non-finalized TrainTrack");
+    }
+
+    // Matrix for switch equations
+    fmpz_mat_t S;
+    fmpz_mat_init(S, switches.size(), branches.size());
+    fmpz_mat_zero(S);
+    for (size_t sw = 0; sw < switches.size(); ++sw)
+    {
+        const auto &swc = switches[sw].connections;
+        for (const auto &germ : swc[static_cast<int>(LeftRight::Left)])
+        {
+            fmpz_set_si(fmpz_mat_entry(S, sw, germ.branch), 1);
+        }
+        for (const auto &germ : swc[static_cast<int>(LeftRight::Right)])
+        {
+            fmpz_set_si(fmpz_mat_entry(S, sw, germ.branch), -1);
+        }
+    }
+    std::cout << "Switch equations matrix:" << std::endl;
+    fmpz_mat_print_pretty(S);
+    std::cout << std::endl;
+
+    // Matrix for nullspace
+    fmpz_mat_t N, W;
+    fmpz_mat_init(N, branches.size(), branches.size());
+    const auto nullspace_dim = fmpz_mat_nullspace(N, S);
+    fmpz_mat_window_init(W, N, 0, 0, branches.size(), nullspace_dim);
+    std::cout << "Nullspace basis matrix:" << std::endl;
+    fmpz_mat_print_pretty(W);
+    std::cout << std::endl;
+
+    // Find linearly independent rows
+    fmpz_mat_t RRE;
+    fmpz_t denominator;
+    std::vector<slong> permutation(branches.size());
+    std::iota(permutation.begin(), permutation.end(), 0);
+    fmpz_mat_init(RRE, branches.size(), nullspace_dim);
+    fmpz_mat_fflu(RRE, denominator, permutation.data(), W, 0);
+    std::cout << "RRE of nullspace basis matrix:" << std::endl;
+    fmpz_mat_print_pretty(RRE);
+    std::cout << std::endl
+              << "Permutation: ";
+    for (const auto p : permutation)
+    {
+        std::cout << p << " ";
+    }
+    std::cout << std::endl;
+
+    // Compute projection to kernel
+    fmpz_mat_t A;
+    fmpz_mat_init(A, nullspace_dim, nullspace_dim);
+    for (slong i = 0; i < nullspace_dim; ++i)
+    {
+        for (slong j = 0; j < nullspace_dim; ++j)
+        {
+            fmpz_set(fmpz_mat_entry(A, i, j), fmpz_mat_entry(W, permutation[i], j));
+        }
+    }
+    std::cout << "A matrix:" << std::endl;
+    fmpz_mat_print_pretty(A);
+    std::cout << std::endl;
+    fmpz_mat_inv(A, denominator, A);
+    fmpz_mat_mul(W, W, A);
+    std::cout << "Projection to kernel matrix:" << std::endl;
+    fmpz_mat_print_pretty(W);
+    std::cout << std::endl
+              << "Denominator: ";
+    fmpz_print(denominator);
+    std::cout << std::endl;
+
+    // All candidate measures
+    std::array<std::vector<Measure<T>>, 3> basis_measures;
+    fmpz_t result;
+    for (slong i = 0; i < nullspace_dim; ++i)
+    {
+        basis_measures[1].emplace_back(branches.size());
+        basis_measures[2].emplace_back(branches.size());
+        for (slong j = 0; j < static_cast<slong>(branches.size()); ++j)
+        {
+            const auto entry = fmpz_mat_entry(W, j, i);
+            if (!fmpz_divides(result, entry, denominator))
+            {
+                throw std::runtime_error("It turns out this can be non-integer!");
+            }
+            else
+            {
+                basis_measures[1][i][j] = static_cast<T>(fmpz_get_si(result));
+                basis_measures[2][i][j] = 2 * basis_measures[1][i][j];
+            }
+        }
+    }
+
+    std::set<Measure<T>> candidate_measures;
+
+    auto recursive = [&](auto self, Measure<T> &current, unsigned int index) -> void
+    {
+        for (int i = 0; i <= 2; ++i)
+        {
+            if (index + 1 == nullspace_dim)
+            {
+                if (all_of(current, _1 >= 0 && _1 <= 2) && any_of(current, _1 == 1))
+                {
+                    candidate_measures.insert(current);
+                }
+            }
+            else
+            {
+                self(self, current, index + 1);
+            }
+
+            if (i == 2)
+            {
+                for (size_t j = 0; j < branches.size(); ++j)
+                {
+                    current[j] -= basis_measures[2][index][j];
+                }
+            }
+            else
+            {
+                for (size_t j = 0; j < branches.size(); ++j)
+                {
+                    current[j] += basis_measures[1][index][j];
+                }
+            }
+        }
+    };
+    Measure<T> tmp_measure(branches.size(), 0);
+    recursive(recursive, tmp_measure, 0);
+
+    // Deallocate all the matrices
+    fmpz_clear(denominator);
+    fmpz_clear(result);
+    fmpz_mat_clear(S);
+    fmpz_mat_clear(N);
+    fmpz_mat_clear(W);
+    fmpz_mat_clear(RRE);
+    fmpz_mat_clear(A);
+
+    return {};
 }
 
 template <typename URBG>

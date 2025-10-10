@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <utility>
+#include <concepts>
 #include <array>
 #include <optional>
 #include <random>
@@ -10,6 +11,9 @@ struct TrainTrackOptions
 {
     bool add_punctures = true;
 };
+
+template <std::integral T>
+using Measure = std::vector<T>;
 
 class TrainTrack
 {
@@ -75,6 +79,9 @@ public:
     void attach_branch(size_t branch_index, size_t switch_index, LeftRight side, size_t pos);
     bool finalize(const TrainTrackOptions &options = TrainTrackOptions());
     Surface get_surface();
+
+    template <std::integral T>
+    std::vector<Measure<T>> get_vertex_measures() const;
 
     template <typename URBG>
     static TrainTrack random_trivalent_train_track(URBG &rng, size_t switches_count, const TrainTrackOptions &options = TrainTrackOptions());

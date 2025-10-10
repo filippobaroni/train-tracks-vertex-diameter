@@ -12,7 +12,7 @@ int main()
     while (true)
     {
         ++attempts;
-        tt = TrainTrack::random_trivalent_train_track(rng, 8);
+        tt = TrainTrack::random_trivalent_train_track(rng, 6);
         auto [g, p] = tt.get_surface();
         if (g == 2 && p == 0)
         {
@@ -20,8 +20,10 @@ int main()
         }
     }
 
-    std::cout << nlohmann::json(tt) << std::endl;
+    std::cout << nlohmann::json(tt).dump(2) << std::endl;
     std::cerr << "Found in " << attempts << " attempts" << std::endl;
+
+    const auto vertex_measures = tt.get_vertex_measures<int>();
 
     return 0;
 }
