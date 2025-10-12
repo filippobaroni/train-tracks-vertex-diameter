@@ -11,19 +11,32 @@ int main()
     unsigned int attempts = 0;
     while (true)
     {
-        ++attempts;
-        tt = TrainTrack::random_trivalent_train_track(rng, 6);
+        tt = TrainTrack::random_trivalent_train_track(rng, 8);
         auto [g, p] = tt.get_surface();
         if (g == 2 && p == 0)
         {
-            break;
+            tt.get_vertex_measures<int>();
         }
     }
-
-    std::cout << nlohmann::json(tt).dump(2) << std::endl;
-    std::cerr << "Found in " << attempts << " attempts" << std::endl;
-
-    const auto vertex_measures = tt.get_vertex_measures<int>();
+    // TrainTrack tt(1, 6);
+    // tt.attach_branch(0, 0, TrainTrack::LeftRight::Left);
+    // tt.attach_branch(0, 0, TrainTrack::LeftRight::Left);
+    // tt.attach_branch(1, 0, TrainTrack::LeftRight::Right);
+    // tt.attach_branch(1, 0, TrainTrack::LeftRight::Right);
+    // tt.attach_branch(2, 0, TrainTrack::LeftRight::Left);
+    // tt.attach_branch(2, 0, TrainTrack::LeftRight::Left);
+    // tt.attach_branch(3, 0, TrainTrack::LeftRight::Right);
+    // tt.attach_branch(3, 0, TrainTrack::LeftRight::Right);
+    // tt.attach_branch(4, 0, TrainTrack::LeftRight::Left);
+    // tt.attach_branch(4, 0, TrainTrack::LeftRight::Left);
+    // tt.attach_branch(5, 0, TrainTrack::LeftRight::Right);
+    // tt.attach_branch(5, 0, TrainTrack::LeftRight::Right);
+    // if (!tt.finalize())
+    // {
+    //     std::cerr << "Failed to finalize train track" << std::endl;
+    //     return 1;
+    // }
+    // tt.get_vertex_measures<int>();
 
     return 0;
 }
