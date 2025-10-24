@@ -3,6 +3,7 @@
 #include <ranges>
 #include <algorithm>
 #include <boost/lambda2.hpp>
+#include <boost/dynamic_bitset.hpp>
 #include <numeric>
 #include <random>
 #include <flint/fmpz_mat.h>
@@ -163,8 +164,10 @@ void TrainTrack::compute_complementary_regions(const TrainTrackOptions &options)
             size_t b = b0;
             auto side_of_branch = side_of_branch0;
             auto endpoint_index = FirstSecond::First;
+            std::vector<ComplementaryRegion::BranchSide> boundary_sequence;
             do
             {
+                boundary_sequence.push_back({b, side_of_branch});
                 visited[static_cast<int>(side_of_branch)][b] = true;
                 const auto [sw, sw_side, position, orientation] = branches[b].endpoints[static_cast<int>(flip(endpoint_index))];
                 const int next_position = int(position) + (side_of_branch == orientation ? -1 : 1);
@@ -204,7 +207,7 @@ void TrainTrack::compute_complementary_regions(const TrainTrackOptions &options)
                     punctures = 1;
                 }
             }
-            complementary_regions.push_back({cusps, punctures});
+            complementary_regions.push_back({cusps, punctures, boundary_sequence});
         }
     }
 }
@@ -224,8 +227,7 @@ std::vector<Measure<T>> TrainTrack::get_vertex_measures() const
         mat_nullspace_basis_extended,
         mat_nullspace_basis,
         mat_nullspace_basis_rre,
-        mat_nullspace_change_of_basis,
-        mat_vertex_check;
+        mat_nullspace_change_of_basis;
 
     // Matrix for switch equations
     fmpz_mat_init(mat_switch_equations, switches.size(), branches.size());
@@ -247,9 +249,9 @@ std::vector<Measure<T>> TrainTrack::get_vertex_measures() const
     // std::cout << std::endl;
 
     // Matrix for nullspace
-    fmpz_mat_init(mat_nullspace_basis, branches.size(), branches.size());
-    const auto nullspace_dim = fmpz_mat_nullspace(mat_nullspace_basis, mat_switch_equations);
-    fmpz_mat_window_init(mat_nullspace_basis, mat_nullspace_basis, 0, 0, branches.size(), nullspace_dim);
+    fmpz_mat_init(mat_nullspace_basis_extended, branches.size(), branches.size());
+    const auto nullspace_dim = fmpz_mat_nullspace(mat_nullspace_basis_extended, mat_switch_equations);
+    fmpz_mat_window_init(mat_nullspace_basis, mat_nullspace_basis_extended, 0, 0, branches.size(), nullspace_dim);
     // std::cout << "Nullspace basis matrix:" << std::endl;
     // fmpz_mat_print_pretty(mat_nullspace_basis);
     // std::cout << std::endl;
@@ -317,7 +319,8 @@ std::vector<Measure<T>> TrainTrack::get_vertex_measures() const
         }
     }
 
-    std::set<Measure<T>> candidate_measures;
+    std::vector<Measure<T>> candidate_measures;
+    std::vector<boost::dynamic_bitset<>> supports;
     auto recursive = [&](auto self, Measure<T> &current, unsigned int index) -> void
     {
         for (int i = 0; i <= 2; ++i)
@@ -332,7 +335,8 @@ std::vector<Measure<T>> TrainTrack::get_vertex_measures() const
                                !(_1 & (basis_measures_denominator - 1))) &&
                     any_of(current, _1 == basis_measures_denominator))
                 {
-                    candidate_measures.emplace(current | views::transform(_1 >> (basis_measures_denominator - 1)) | std::ranges::to<Measure<T>>());
+                    candidate_measures.emplace_back(current | views::transform(_1 >> (basis_measures_denominator - 1)) | to<Measure<T>>());
+                    supports.emplace_back(current | views::transform(_1 != 0) | to<boost::dynamic_bitset<>>());
                 }
             }
             else
@@ -359,48 +363,29 @@ std::vector<Measure<T>> TrainTrack::get_vertex_measures() const
     Measure<T> tmp_measure(branches.size(), 0);
     recursive(recursive, tmp_measure, 0);
 
-    // Check if candidate measures are vertex measures
-    fmpz_mat_init(mat_vertex_check, branches.size(), nullspace_dim);
-    std::vector<Measure<T>> vertex_measures;
-    for (auto &measure : candidate_measures)
+    // Extract measures of minimal support (i.e. vertex measures)
+    sort(supports);
+    std::set<boost::dynamic_bitset<>> vertex_supports;
+    for (const auto &s : supports)
     {
-        for (slong i = 0; i < static_cast<slong>(branches.size()); ++i)
+        if (none_of(vertex_supports, [&](const auto &vs)
+                    { return vs.is_subset_of(s); }))
         {
-            if (measure[i] == 0)
-            {
-                for (slong j = 0; j < nullspace_dim; ++j)
-                {
-                    fmpz_set_si(fmpz_mat_entry(mat_vertex_check, i, j), fmpz_get_si(fmpz_mat_entry(mat_nullspace_basis, i, j)));
-                }
-            }
-            else
-            {
-                for (slong j = 0; j < nullspace_dim; ++j)
-                {
-                    fmpz_set_si(fmpz_mat_entry(mat_vertex_check, i, j), 0);
-                }
-            }
-        }
-        const auto rank = fmpz_mat_rref(mat_vertex_check, int_tmp, mat_vertex_check);
-        if (rank == nullspace_dim)
-        {
-            throw std::runtime_error("Rank is equal to nullspace dimension??");
-        }
-        if (rank == nullspace_dim - 1)
-        {
-            vertex_measures.emplace_back(std::move(measure));
+            vertex_supports.insert(s);
         }
     }
+    const auto vertex_measures = candidate_measures | views::filter([&](const auto &m)
+                                                                    { return vertex_supports.contains(m | views::transform(_1 != 0) | to<boost::dynamic_bitset<>>()); }) |
+                                 to<std::vector<Measure<T>>>();
 
     // Deallocate all the matrices
     fmpz_clear(int_denominator);
     fmpz_clear(int_tmp);
     fmpz_mat_clear(mat_switch_equations);
-    fmpz_mat_clear(mat_nullspace_basis);
+    fmpz_mat_clear(mat_nullspace_basis_extended);
     fmpz_mat_window_clear(mat_nullspace_basis);
     fmpz_mat_clear(mat_nullspace_basis_rre);
     fmpz_mat_clear(mat_nullspace_change_of_basis);
-    fmpz_mat_clear(mat_vertex_check);
 
     // Return vertex measures
     return vertex_measures;
@@ -453,6 +438,33 @@ TrainTrack TrainTrack::random_trivalent_train_track(URBG &rng, size_t switches_c
     }
 }
 
+NLOHMANN_JSON_SERIALIZE_ENUM(TrainTrack::LeftRight, {{TrainTrack::LeftRight::Left, 0}, {TrainTrack::LeftRight::Right, 1}});
+NLOHMANN_JSON_SERIALIZE_ENUM(TrainTrack::UpDown, {{TrainTrack::UpDown::Up, "up"}, {TrainTrack::UpDown::Down, "down"}});
+NLOHMANN_JSON_SERIALIZE_ENUM(TrainTrack::FirstSecond, {{TrainTrack::FirstSecond::First, 0}, {TrainTrack::FirstSecond::Second, 1}});
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::ComplementaryRegion::BranchSide, branch, side);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::ComplementaryRegion, cusps, punctures, boundary);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::Surface, genus, punctures);
+
+void to_json(nlohmann::json &j, const TrainTrack::Branch::Endpoint &e)
+{
+    j = nlohmann::json{
+        {"switch", e.sw},
+        {"side", e.side},
+        {"position", e.position},
+        {"orientation", e.orientation}};
+}
+void from_json(const nlohmann::json &j, TrainTrack::Branch::Endpoint &e)
+{
+    j.at("switch").get_to(e.sw);
+    j.at("side").get_to(e.side);
+    j.at("position").get_to(e.position);
+    j.at("orientation").get_to(e.orientation);
+}
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::Branch, endpoints);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::Switch::Germ, branch, endpoint);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::Switch, connections);
+
 void to_json(nlohmann::json &j, const TrainTrack &tt)
 {
     if (!tt.is_finalized)
@@ -462,7 +474,7 @@ void to_json(nlohmann::json &j, const TrainTrack &tt)
     j = nlohmann::json{
         {"switches", tt.switches},
         {"branches", tt.branches},
-        {"complementary_regions", tt.complementary_regions},
+        {"complementaryRegions", tt.complementary_regions},
         {"surface", tt.surface}};
 }
 
@@ -470,7 +482,7 @@ void from_json(const nlohmann::json &j, TrainTrack &tt)
 {
     j.at("switches").get_to(tt.switches);
     j.at("branches").get_to(tt.branches);
-    j.at("complementary_regions").get_to(tt.complementary_regions);
+    j.at("complementaryRegions").get_to(tt.complementary_regions);
     j.at("surface").get_to(tt.surface);
     tt.is_finalized = true;
 }

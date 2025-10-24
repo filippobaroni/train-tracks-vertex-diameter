@@ -61,7 +61,13 @@ public:
 
     struct ComplementaryRegion
     {
+        struct BranchSide
+        {
+            size_t branch;
+            UpDown side;
+        };
         unsigned int cusps, punctures;
+        std::vector<BranchSide> boundary;
     };
 
     struct Surface
@@ -101,15 +107,5 @@ private:
 
 template <typename E>
 constexpr E flip(E e);
-
-NLOHMANN_JSON_SERIALIZE_ENUM(TrainTrack::LeftRight, {{TrainTrack::LeftRight::Left, 0}, {TrainTrack::LeftRight::Right, 1}});
-NLOHMANN_JSON_SERIALIZE_ENUM(TrainTrack::UpDown, {{TrainTrack::UpDown::Up, "up"}, {TrainTrack::UpDown::Down, "down"}});
-NLOHMANN_JSON_SERIALIZE_ENUM(TrainTrack::FirstSecond, {{TrainTrack::FirstSecond::First, 0}, {TrainTrack::FirstSecond::Second, 1}});
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::Branch::Endpoint, sw, side, position, orientation);
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::Branch, endpoints);
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::Switch::Germ, branch, endpoint);
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::Switch, connections);
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::ComplementaryRegion, cusps, punctures);
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::Surface, genus, punctures);
 
 #include "train_track.cpp"
