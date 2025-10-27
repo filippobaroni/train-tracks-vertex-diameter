@@ -60,13 +60,19 @@ void TrainTrack::attach_branch(size_t branch_index, size_t switch_index, LeftRig
     conns.insert(conns.begin() + pos, {branch_index, branch.endpoints.size() == 1 ? FirstSecond::First : FirstSecond::Second});
 }
 
-TrainTrack::Surface TrainTrack::get_surface()
+inline const auto &TrainTrack::get_surface() const
 {
-    if (!is_finalized)
-    {
-        throw std::runtime_error("Cannot get surface of non-finalized TrainTrack");
-    }
     return surface;
+}
+
+inline const auto &TrainTrack::get_switches() const
+{
+    return switches;
+}
+
+inline const auto &TrainTrack::get_branches() const
+{
+    return branches;
 }
 
 bool TrainTrack::finalize(const TrainTrackOptions &options)
@@ -391,6 +397,67 @@ std::vector<Measure<T>> TrainTrack::get_vertex_measures() const
     return vertex_measures;
 }
 
+template <std::integral T>
+CarriedCurvesConfiguration configuration_from_carried_curves(const Measure<T> &m1, const Measure<T> &m2)
+{
+    CarriedCurvesConfiguration config;
+    for (size_t i = 0; i < m1.size(); ++i)
+    {
+        std::vector<FirstSecond> v(m1[i] + m2[i], FirstSecond::Second);
+        for (size_t j = 0; static_cast<T>(j) < m1[i]; ++j)
+        {
+            v[j] = FirstSecond::First;
+        }
+        config.emplace_back(std::move(v));
+    }
+    return config;
+}
+
+unsigned long intersections_in_configuration(const TrainTrack &train_track, const CarriedCurvesConfiguration &config)
+{
+    unsigned long intersections = 0;
+    for (size_t sw = 0; sw < train_track.get_switches().size(); ++sw)
+    {
+        const auto left_range = ConfigurationSwitchEndpointsRange(train_track, config, sw, LeftRight::Left);
+        const auto right_range = ConfigurationSwitchEndpointsRange(train_track, config, sw, LeftRight::Right);
+        auto left_it = left_range.begin(), right_it = right_range.begin();
+        int left_count = 0, right_count = 0;
+        while (true)
+        {
+            while (left_it != left_range.end() && config[train_track.get_switches()[sw].connections[static_cast<int>(LeftRight::Left)][left_it->connection_position].branch][left_it->position_on_branch] == FirstSecond::Second)
+            {
+                ++left_it;
+                ++left_count;
+            }
+            if (left_it == left_range.end())
+            {
+                break;
+            }
+            while (config[train_track.get_switches()[sw].connections[static_cast<int>(LeftRight::Right)][right_it->connection_position].branch][right_it->position_on_branch] == FirstSecond::Second)
+            {
+                ++right_it;
+                ++right_count;
+            }
+            intersections += std::abs(left_count - right_count);
+            ++left_it;
+            ++right_it;
+        }
+    }
+    return intersections;
+}
+
+template <std::integral T>
+std::tuple<unsigned long, CarriedCurvesConfiguration> TrainTrack::compute_intersection_number(const Measure<T> &m1, const Measure<T> &m2) const
+{
+    if (!is_finalized)
+    {
+        throw std::runtime_error("Cannot compute intersection number on non-finalized TrainTrack");
+    }
+    auto c = configuration_from_carried_curves(m1, m2);
+    unsigned long intersections = intersections_in_configuration(*this, c);
+    return {intersections, c};
+}
+
 template <typename URBG>
 TrainTrack TrainTrack::random_trivalent_train_track(URBG &rng, size_t switches_count, const TrainTrackOptions &options)
 {
@@ -438,9 +505,108 @@ TrainTrack TrainTrack::random_trivalent_train_track(URBG &rng, size_t switches_c
     }
 }
 
-NLOHMANN_JSON_SERIALIZE_ENUM(TrainTrack::LeftRight, {{TrainTrack::LeftRight::Left, 0}, {TrainTrack::LeftRight::Right, 1}});
-NLOHMANN_JSON_SERIALIZE_ENUM(TrainTrack::UpDown, {{TrainTrack::UpDown::Up, "up"}, {TrainTrack::UpDown::Down, "down"}});
-NLOHMANN_JSON_SERIALIZE_ENUM(TrainTrack::FirstSecond, {{TrainTrack::FirstSecond::First, 0}, {TrainTrack::FirstSecond::Second, 1}});
+ConfigurationSwitchEndpointsRange::ConfigurationSwitchEndpointsRange(const TrainTrack &tt, const CarriedCurvesConfiguration &config, size_t sw_index, LeftRight side)
+    : train_track(tt), configuration(config), switch_index(sw_index), side(side)
+{
+}
+
+ConfigurationSwitchEndpointsRange::Iterator::Iterator(const TrainTrack &train_track, const CarriedCurvesConfiguration &configuration, size_t switch_index, LeftRight side, size_t connection_position, int position_on_branch)
+    : train_track(train_track), configuration(configuration), switch_index(switch_index), side(side), value{connection_position, position_on_branch}
+{
+}
+
+auto ConfigurationSwitchEndpointsRange::Iterator::operator*() const -> reference
+{
+    return value;
+}
+
+auto ConfigurationSwitchEndpointsRange::Iterator::operator->() const -> pointer
+{
+    return &value;
+}
+
+bool ConfigurationSwitchEndpointsRange::Iterator::operator==(const Iterator &other) const
+{
+    return value.connection_position == other.value.connection_position &&
+           value.position_on_branch == other.value.position_on_branch;
+}
+
+bool ConfigurationSwitchEndpointsRange::Iterator::operator!=(const Iterator &other) const
+{
+    return !(*this == other);
+}
+
+auto ConfigurationSwitchEndpointsRange::Iterator::skip_empty_branches() -> Iterator &
+{
+    const auto &conns = train_track.get_switches()[switch_index].connections[static_cast<int>(side)];
+    while (value.connection_position < conns.size() && configuration[conns[value.connection_position].branch].empty())
+    {
+        ++value.connection_position;
+    }
+    if (value.connection_position < conns.size())
+    {
+        const auto &c = conns[value.connection_position];
+        value.position_on_branch = train_track.get_branches()[c.branch].endpoints[static_cast<int>(c.endpoint)].orientation == UpDown::Up ? 0 : static_cast<int>(configuration[c.branch].size() - 1);
+    }
+    else
+    {
+        value.position_on_branch = 0;
+    }
+    return *this;
+}
+
+auto ConfigurationSwitchEndpointsRange::Iterator::operator++() -> Iterator &
+{
+    const auto &conns = train_track.get_switches()[switch_index].connections[static_cast<int>(side)];
+    const auto &c = conns[value.connection_position];
+    if (train_track.get_branches()[c.branch].endpoints[static_cast<int>(c.endpoint)].orientation == UpDown::Up)
+    {
+        if (static_cast<size_t>(++value.position_on_branch) >= configuration[c.branch].size())
+        {
+            ++value.connection_position;
+            return skip_empty_branches();
+        }
+    }
+    else
+    {
+        if (value.position_on_branch-- <= 0)
+        {
+            ++value.connection_position;
+            return skip_empty_branches();
+        }
+    }
+    return *this;
+}
+
+auto ConfigurationSwitchEndpointsRange::Iterator::operator++(int) -> Iterator
+{
+    Iterator tmp = *this;
+    ++(*this);
+    return tmp;
+}
+
+auto ConfigurationSwitchEndpointsRange::begin() const -> Iterator
+{
+    const auto &conns = train_track.get_switches()[switch_index].connections[static_cast<int>(side)];
+    auto it = Iterator(train_track, configuration, switch_index, side, 0, 0);
+    it.skip_empty_branches();
+    if (it->connection_position >= conns.size())
+    {
+        return Iterator(train_track, configuration, switch_index, side, conns.size(), 0);
+    }
+    const auto &c = conns[it->connection_position];
+    const int position_on_branch = train_track.get_branches()[c.branch].endpoints[static_cast<int>(c.endpoint)].orientation == UpDown::Up ? 0 : static_cast<int>(configuration[c.branch].size() - 1);
+    return Iterator(train_track, configuration, switch_index, side, it->connection_position, position_on_branch);
+}
+
+auto ConfigurationSwitchEndpointsRange::end() const -> Iterator
+{
+    return Iterator(train_track, configuration, switch_index, side, train_track.get_switches()[switch_index].connections[static_cast<int>(side)].size(), 0);
+}
+
+NLOHMANN_JSON_SERIALIZE_ENUM(LeftRight, {{LeftRight::Left, 0}, {LeftRight::Right, 1}});
+NLOHMANN_JSON_SERIALIZE_ENUM(UpDown, {{UpDown::Up, "up"}, {UpDown::Down, "down"}});
+NLOHMANN_JSON_SERIALIZE_ENUM(FirstSecond, {{FirstSecond::First, 0}, {FirstSecond::Second, 1}});
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::ComplementaryRegion::BranchSide, branch, side);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::ComplementaryRegion, cusps, punctures, boundary);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::Surface, genus, punctures);
@@ -472,10 +638,10 @@ void to_json(nlohmann::json &j, const TrainTrack &tt)
         throw std::runtime_error("Cannot serialize non-finalized TrainTrack");
     }
     j = nlohmann::json{
-        {"switches", tt.switches},
-        {"branches", tt.branches},
+        {"switches", tt.get_switches()},
+        {"branches", tt.get_branches()},
         {"complementaryRegions", tt.complementary_regions},
-        {"surface", tt.surface}};
+        {"surface", tt.get_surface()}};
 }
 
 void from_json(const nlohmann::json &j, TrainTrack &tt)

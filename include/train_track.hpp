@@ -7,32 +7,38 @@
 #include <random>
 #include <nlohmann/json.hpp>
 
-struct TrainTrackOptions
+enum class LeftRight
 {
-    bool add_punctures = true;
+    Left = 0,
+    Right = 1
+};
+enum class UpDown
+{
+    Up = 0,
+    Down = 1
+};
+enum class FirstSecond
+{
+    First = 0,
+    Second = 1
 };
 
 template <std::integral T>
 using Measure = std::vector<T>;
 
+using CarriedCurvesConfiguration = std::vector<std::vector<FirstSecond>>;
+
+template <std::integral T>
+CarriedCurvesConfiguration configuration_from_carried_curves(const Measure<T> &, const Measure<T> &);
+
+struct TrainTrackOptions
+{
+    bool add_punctures = true;
+};
+
 class TrainTrack
 {
 public:
-    enum class LeftRight
-    {
-        Left = 0,
-        Right = 1
-    };
-    enum class UpDown
-    {
-        Up = 0,
-        Down = 1
-    };
-    enum class FirstSecond
-    {
-        First = 0,
-        Second = 1
-    };
     struct Switch;
     struct Branch;
 
@@ -84,10 +90,15 @@ public:
     void attach_branch(size_t branch_index, size_t switch_index, LeftRight side);
     void attach_branch(size_t branch_index, size_t switch_index, LeftRight side, size_t pos);
     bool finalize(const TrainTrackOptions &options = TrainTrackOptions());
-    Surface get_surface();
+    const auto &get_switches() const;
+    const auto &get_branches() const;
+    const auto &get_surface() const;
 
     template <std::integral T>
     std::vector<Measure<T>> get_vertex_measures() const;
+
+    template <std::integral T>
+    std::tuple<unsigned long, CarriedCurvesConfiguration> compute_intersection_number(const Measure<T> &m1, const Measure<T> &m2) const;
 
     template <typename URBG>
     static TrainTrack random_trivalent_train_track(URBG &rng, size_t switches_count, const TrainTrackOptions &options = TrainTrackOptions());
@@ -107,5 +118,50 @@ private:
 
 template <typename E>
 constexpr E flip(E e);
+
+class ConfigurationSwitchEndpointsRange
+{
+public:
+    ConfigurationSwitchEndpointsRange(const TrainTrack &, const CarriedCurvesConfiguration &, size_t, LeftRight);
+    struct Iterator
+    {
+        struct value_type
+        {
+            size_t connection_position;
+            int position_on_branch;
+        };
+        using reference = value_type const &;
+        using pointer = value_type const *;
+        using difference_type = std::ptrdiff_t;
+        using iterator_category = std::input_iterator_tag;
+
+        Iterator(const TrainTrack &, const CarriedCurvesConfiguration &, size_t, LeftRight, size_t, int);
+        reference operator*() const;
+        pointer operator->() const;
+        Iterator &operator++();
+        Iterator operator++(int);
+        bool operator==(const Iterator &) const;
+        bool operator!=(const Iterator &) const;
+
+        Iterator &skip_empty_branches();
+
+        const TrainTrack &train_track;
+        const CarriedCurvesConfiguration &configuration;
+        size_t switch_index;
+        LeftRight side;
+        value_type value;
+    };
+
+    Iterator begin() const;
+    Iterator end() const;
+
+private:
+    const TrainTrack &train_track;
+    const CarriedCurvesConfiguration &configuration;
+    size_t switch_index;
+    LeftRight side;
+};
+
+unsigned long intersections_in_configuration(const TrainTrack &, const CarriedCurvesConfiguration &);
 
 #include "train_track.cpp"
