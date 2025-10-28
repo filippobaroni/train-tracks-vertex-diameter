@@ -327,7 +327,7 @@ std::vector<Measure<T>> TrainTrack::get_vertex_measures() const
 
     std::vector<Measure<T>> candidate_measures;
     std::vector<boost::dynamic_bitset<>> supports;
-    auto recursive = [&](auto self, Measure<T> &current, unsigned int index) -> void
+    auto recursive = [&](auto &&self, Measure<T> &current, unsigned int index) -> void
     {
         for (int i = 0; i <= 2; ++i)
         {
@@ -454,7 +454,126 @@ std::tuple<unsigned long, CarriedCurvesConfiguration> TrainTrack::compute_inters
         throw std::runtime_error("Cannot compute intersection number on non-finalized TrainTrack");
     }
     auto c = configuration_from_carried_curves(m1, m2);
+
+    // FirstSecond::First = red, FirstSecond::Second = blue
+    const auto get_color = [&](const size_t switch_, auto it_) // side_ is useless
+    {
+        return c[switches[switch_].connections[static_cast<int>(it_.side)][it_->connection_position].branch][it_->position_on_branch];
+    };
+
+    // finds and removes bigon starting at it1 and it2 on switch0 side0
+    // assumes they are of different colors and facing the same branch
+    // returns true if a bigon was found and removed
+    const auto find_and_remove_bigon = [&](auto &&self, const size_t switch0, const LeftRight side0, auto it1, auto it2) -> bool
+    {
+        const auto &conn = switches[switch0].connections[static_cast<int>(side0)][it1->connection_position];
+        const auto &branch = branches[conn.branch];
+        const auto &other_endpoint = branch.endpoints[static_cast<int>(flip(conn.endpoint))];
+        const auto switch1 = other_endpoint.sw;
+        const auto side1 = other_endpoint.side;
+        auto it3 = ConfigurationSwitchEndpointsRange(*this, c, switch1, side1).begin(),
+             it_3 = ConfigurationSwitchEndpointsRange(*this, c, switch1, flip(side1)).begin();
+        int reds_on_side1_minus_other_side1 = 0;
+        while (true)
+        {
+            const auto color3 = get_color(switch1, it3);
+            if (color3 == FirstSecond::First)
+            {
+                ++reds_on_side1_minus_other_side1;
+            }
+            if (get_color(switch1, it_3) == FirstSecond::First)
+            {
+                --reds_on_side1_minus_other_side1;
+            }
+            if (it3->connection_position == other_endpoint.position && (it3->position_on_branch == it1->position_on_branch || it3->position_on_branch == it2->position_on_branch))
+            {
+                if (reds_on_side1_minus_other_side1 == 0)
+                { // bigon keeps going
+                    const auto it_4 = it_3++;
+                    if (it_3->connection_position != it_4->connection_position)
+                    {
+                        return false;
+                    }
+                    if (self(self, switch1, flip(side1), it_4, it_3))
+                    {
+                        std::swap(c[conn.branch][it1->position_on_branch], c[conn.branch][it2->position_on_branch]);
+                        return true;
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }
+                else if ((color3 == FirstSecond::First) == (reds_on_side1_minus_other_side1 > 0))
+                { // bigon closes up
+                    std::swap(c[conn.branch][it1->position_on_branch], c[conn.branch][it2->position_on_branch]);
+                    return true;
+                }
+                else
+                { // there was no bigon after all
+                    return false;
+                }
+            }
+            ++it3;
+            ++it_3;
+        }
+    };
+
     unsigned long intersections = intersections_in_configuration(*this, c);
+
+    bool found_bigon;
+    do
+    {
+        if (intersections <= 1)
+        {
+            break;
+        }
+        found_bigon = false;
+        for (size_t sw = 0; sw < switches.size(); ++sw)
+        {
+            for (const auto side : {LeftRight::Left, LeftRight::Right})
+            {
+                auto range = ConfigurationSwitchEndpointsRange(*this, c, sw, side);
+                auto it2 = range.begin();
+                if (it2 == range.end())
+                {
+                    continue;
+                }
+                auto it1 = it2++;
+                auto it_1 = ConfigurationSwitchEndpointsRange(*this, c, sw, flip(side)).begin(); // Iterator matching it1 on other side
+                int reds_on_side = 0, reds_on_other_side = 0;
+                while (it2 != range.end())
+                {
+                    reds_on_side += get_color(sw, it1) == FirstSecond::First ? 1 : 0;
+                    reds_on_other_side += get_color(sw, it_1) == FirstSecond::First ? 1 : 0;
+                    if (it1->connection_position == it2->connection_position)
+                    {
+                        const auto color1 = get_color(sw, it1),
+                                   color2 = get_color(sw, it2);
+                        if (color1 != color2 && ((color1 == FirstSecond::First && reds_on_side > reds_on_other_side) || (color1 == FirstSecond::Second && reds_on_side < reds_on_other_side))) // if different colour && crossing
+                        {
+                            if (find_and_remove_bigon(find_and_remove_bigon, sw, side, it1, it2))
+                            {
+                                intersections -= 2;
+                                found_bigon = true;
+                                break;
+                            }
+                        }
+                    }
+                    it1 = it2++;
+                    ++it_1;
+                }
+                if (found_bigon)
+                {
+                    break;
+                }
+            }
+            if (found_bigon)
+            {
+                break;
+            }
+        }
+    } while (found_bigon);
     return {intersections, c};
 }
 
@@ -523,6 +642,13 @@ auto ConfigurationSwitchEndpointsRange::Iterator::operator*() const -> reference
 auto ConfigurationSwitchEndpointsRange::Iterator::operator->() const -> pointer
 {
     return &value;
+}
+
+// only works if same train track, switch, side, configuration
+auto ConfigurationSwitchEndpointsRange::Iterator::operator=(const Iterator &other) -> Iterator &
+{
+    value = other.value;
+    return *this;
 }
 
 bool ConfigurationSwitchEndpointsRange::Iterator::operator==(const Iterator &other) const

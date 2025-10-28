@@ -136,10 +136,12 @@ public:
         using iterator_category = std::input_iterator_tag;
 
         Iterator(const TrainTrack &, const CarriedCurvesConfiguration &, size_t, LeftRight, size_t, int);
+        constexpr Iterator(Iterator const &) = default;
         reference operator*() const;
         pointer operator->() const;
         Iterator &operator++();
         Iterator operator++(int);
+        Iterator &operator=(const Iterator &);
         bool operator==(const Iterator &) const;
         bool operator!=(const Iterator &) const;
 
