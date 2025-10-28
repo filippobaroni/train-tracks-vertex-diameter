@@ -31,6 +31,9 @@ using CarriedCurvesConfiguration = std::vector<std::vector<FirstSecond>>;
 template <std::integral T>
 CarriedCurvesConfiguration configuration_from_carried_curves(const Measure<T> &, const Measure<T> &);
 
+template <std::integral T, typename RNG>
+CarriedCurvesConfiguration random_configuration_from_carried_curves(RNG &, const Measure<T> &, const Measure<T> &);
+
 struct TrainTrackOptions
 {
     bool add_punctures = true;
@@ -99,6 +102,7 @@ public:
 
     template <std::integral T>
     std::tuple<unsigned long, CarriedCurvesConfiguration> compute_intersection_number(const Measure<T> &m1, const Measure<T> &m2) const;
+    unsigned long compute_intersection_number(CarriedCurvesConfiguration &) const;
 
     template <typename URBG>
     static TrainTrack random_trivalent_train_track(URBG &rng, size_t switches_count, const TrainTrackOptions &options = TrainTrackOptions());

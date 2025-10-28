@@ -9,6 +9,7 @@
 #include <flint/fmpz_mat.h>
 #include <flint/fmpz.h>
 #include <set>
+#include <iostream>
 
 using namespace std::ranges;
 using namespace boost::lambda2;
@@ -413,6 +414,23 @@ CarriedCurvesConfiguration configuration_from_carried_curves(const Measure<T> &m
     return config;
 }
 
+template <std::integral T, typename RNG>
+CarriedCurvesConfiguration random_configuration_from_carried_curves(RNG &rng, const Measure<T> &m1, const Measure<T> &m2)
+{
+    CarriedCurvesConfiguration config;
+    for (size_t i = 0; i < m1.size(); ++i)
+    {
+        std::vector<FirstSecond> v(m1[i] + m2[i], FirstSecond::Second);
+        for (size_t j = 0; static_cast<T>(j) < m1[i]; ++j)
+        {
+            v[j] = FirstSecond::First;
+        }
+        std::shuffle(v.begin(), v.end(), rng);
+        config.emplace_back(std::move(v));
+    }
+    return config;
+}
+
 unsigned long intersections_in_configuration(const TrainTrack &train_track, const CarriedCurvesConfiguration &config)
 {
     unsigned long intersections = 0;
@@ -449,11 +467,17 @@ unsigned long intersections_in_configuration(const TrainTrack &train_track, cons
 template <std::integral T>
 std::tuple<unsigned long, CarriedCurvesConfiguration> TrainTrack::compute_intersection_number(const Measure<T> &m1, const Measure<T> &m2) const
 {
+    auto c = configuration_from_carried_curves(m1, m2);
+    auto intersections = compute_intersection_number(c);
+    return {intersections, c};
+}
+
+unsigned long TrainTrack::compute_intersection_number(CarriedCurvesConfiguration &c) const
+{
     if (!is_finalized)
     {
         throw std::runtime_error("Cannot compute intersection number on non-finalized TrainTrack");
     }
-    auto c = configuration_from_carried_curves(m1, m2);
 
     // FirstSecond::First = red, FirstSecond::Second = blue
     const auto get_color = [&](const size_t switch_, auto it_) // side_ is useless
@@ -476,20 +500,20 @@ std::tuple<unsigned long, CarriedCurvesConfiguration> TrainTrack::compute_inters
         int reds_on_side1_minus_other_side1 = 0;
         while (true)
         {
-            const auto color3 = get_color(switch1, it3);
+            const auto color3 = get_color(switch1, it3), color_3 = get_color(switch1, it_3);
             if (color3 == FirstSecond::First)
             {
                 ++reds_on_side1_minus_other_side1;
             }
-            if (get_color(switch1, it_3) == FirstSecond::First)
+            if (color_3 == FirstSecond::First)
             {
                 --reds_on_side1_minus_other_side1;
             }
             if (it3->connection_position == other_endpoint.position && (it3->position_on_branch == it1->position_on_branch || it3->position_on_branch == it2->position_on_branch))
             {
-                if (reds_on_side1_minus_other_side1 == 0)
+                const auto it_4 = it_3++;
+                if (reds_on_side1_minus_other_side1 == 0 && color_3 == color3 && get_color(switch1, it_3) != color3)
                 { // bigon keeps going
-                    const auto it_4 = it_3++;
                     if (it_3->connection_position != it_4->connection_position)
                     {
                         return false;
@@ -504,7 +528,7 @@ std::tuple<unsigned long, CarriedCurvesConfiguration> TrainTrack::compute_inters
                         return false;
                     }
                 }
-                else if ((color3 == FirstSecond::First) == (reds_on_side1_minus_other_side1 > 0))
+                else if ((color3 == FirstSecond::First && reds_on_side1_minus_other_side1 > 0) || (color3 == FirstSecond::Second && reds_on_side1_minus_other_side1 < 0))
                 { // bigon closes up
                     std::swap(c[conn.branch][it1->position_on_branch], c[conn.branch][it2->position_on_branch]);
                     return true;
@@ -574,7 +598,7 @@ std::tuple<unsigned long, CarriedCurvesConfiguration> TrainTrack::compute_inters
             }
         }
     } while (found_bigon);
-    return {intersections, c};
+    return intersections;
 }
 
 template <typename URBG>
