@@ -252,6 +252,10 @@ std::vector<Measure<T>> TrainTrack::get_vertex_measures() const
                mat_nullspace_basis_rre,
                mat_nullspace_change_of_basis;
 
+    // Initialize fmpz variables
+    fmpz_init(int_denominator);
+    fmpz_init(int_tmp);
+
     // Matrix for switch equations
     fmpz_mat_init(mat_switch_equations, switches.size(), branches.size());
     fmpz_mat_zero(mat_switch_equations);

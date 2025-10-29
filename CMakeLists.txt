@@ -10,9 +10,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #endif()
 
 
-
 add_executable(train_tracks
-  src/main.cpp
+        src/main.cpp
 )
 target_include_directories(train_tracks PRIVATE include)
 
@@ -28,6 +27,9 @@ target_link_libraries(train_tracks PRIVATE PkgConfig::mpfr)
 target_link_libraries(train_tracks PRIVATE PkgConfig::FLINT)
 
 find_package(nlohmann_json CONFIG REQUIRED)
+
+find_package(spdlog CONFIG REQUIRED)
+target_link_libraries(train_tracks PRIVATE spdlog::spdlog)
 
 
 # Build-type-specific flags

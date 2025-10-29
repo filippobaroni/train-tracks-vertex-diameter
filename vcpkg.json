@@ -14,5 +14,11 @@
   }, {
     "name" : "nlohmann-json",
     "version>=" : "3.12.0#1"
+  }, {
+    "name" : "concurrentqueue",
+    "version>=" : "1.0.4#1"
+  }, {
+    "name" : "spdlog",
+    "version>=" : "1.16.0"
   } ]
 }
