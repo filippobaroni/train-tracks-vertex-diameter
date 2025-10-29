@@ -1,9 +1,18 @@
 {
-  "name": "train-tracks-vertex-diameter",
-  "version-string": "0.1.0",
-  "dependencies": [
-    "boost-lambda2",
-    "nlohmann-json",
-    "pcg"
-  ]
+  "name" : "train-tracks-vertex-diameter",
+  "version-string" : "0.1.0",
+  "builtin-baseline" : "74e6536215718009aae747d86d84b78376bf9e09",
+  "dependencies" : [ {
+    "name" : "argparse",
+    "version>=" : "3.2"
+  }, {
+    "name" : "boost-lambda2",
+    "version>=" : "1.89.0"
+  }, {
+    "name" : "pcg",
+    "version>=" : "2022-04-09"
+  }, {
+    "name" : "nlohmann-json",
+    "version>=" : "3.12.0#1"
+  } ]
 }

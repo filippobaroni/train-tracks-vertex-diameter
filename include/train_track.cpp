@@ -9,7 +9,6 @@
 #include <flint/fmpz_mat.h>
 #include <flint/fmpz.h>
 #include <set>
-#include <iostream>
 
 using namespace std::ranges;
 using namespace boost::lambda2;
@@ -51,46 +50,55 @@ void TrainTrack::attach_branch(size_t branch_index, size_t switch_index, LeftRig
     {
         throw std::runtime_error("Cannot attach branch to finalized TrainTrack");
     }
-    Branch &branch = branches[branch_index];
+    Branch& branch = branches[branch_index];
     if (branch.endpoints.size() >= 2)
     {
         throw std::runtime_error("Branch already has two endpoints");
     }
-    branch.endpoints.push_back({switch_index, side, 0, (side == LeftRight::Left) == (branch.endpoints.size() == 1) ? UpDown::Up : UpDown::Down});
-    auto &conns = switches[switch_index].connections[static_cast<int>(side)];
-    conns.insert(conns.begin() + pos, {branch_index, branch.endpoints.size() == 1 ? FirstSecond::First : FirstSecond::Second});
+    branch.endpoints.push_back({
+        switch_index, side, 0, (side == LeftRight::Left) == (branch.endpoints.size() == 1) ? UpDown::Up : UpDown::Down
+    });
+    auto& conns = switches[switch_index].connections[static_cast<int>(side)];
+    conns.insert(conns.begin() + pos, {
+                     branch_index, branch.endpoints.size() == 1 ? FirstSecond::First : FirstSecond::Second
+                 });
 }
 
-inline const auto &TrainTrack::get_surface() const
+inline const auto& TrainTrack::get_surface() const
 {
     return surface;
 }
 
-inline const auto &TrainTrack::get_switches() const
+inline const auto& TrainTrack::get_switches() const
 {
     return switches;
 }
 
-inline const auto &TrainTrack::get_branches() const
+inline const auto& TrainTrack::get_branches() const
 {
     return branches;
 }
 
-bool TrainTrack::finalize(const TrainTrackOptions &options)
+bool TrainTrack::finalize(const TrainTrackOptions& options)
 {
     if (is_finalized)
     {
         // Already finalised
         return true;
     }
-    if (any_of(branches, [](const Branch &b)
-               { return b.endpoints.size() != 2; }))
+    if (any_of(branches, [](const Branch& b)
+    {
+        return b.endpoints.size() != 2;
+    }))
     {
         // A branch with less than two endpoints
         return false;
     }
-    if (any_of(switches, [](const Switch &sw)
-               { return sw.connections[static_cast<int>(LeftRight::Left)].empty() || sw.connections[static_cast<int>(LeftRight::Right)].empty(); }))
+    if (any_of(switches, [](const Switch& sw)
+    {
+        return sw.connections[static_cast<int>(LeftRight::Left)].empty() || sw.connections[static_cast<int>(
+            LeftRight::Right)].empty();
+    }))
     {
         // A switch with no incident branches on one side
         return false;
@@ -99,15 +107,15 @@ bool TrainTrack::finalize(const TrainTrackOptions &options)
     // Check connectedness
     {
         std::vector<bool> visited_switches(switches.size(), false);
-        const auto dfs = [&](const auto &self, size_t sw) -> void
+        const auto dfs = [&](const auto& self, size_t sw) -> void
         {
             visited_switches[sw] = true;
             for (const auto side : {LeftRight::Left, LeftRight::Right})
             {
-                for (const auto &germ : switches[sw].connections[static_cast<int>(side)])
+                for (const auto& germ : switches[sw].connections[static_cast<int>(side)])
                 {
-                    const auto &branch = branches[germ.branch];
-                    const auto &other_endpoint = branch.endpoints[static_cast<int>(flip(germ.endpoint))];
+                    const auto& branch = branches[germ.branch];
+                    const auto& other_endpoint = branch.endpoints[static_cast<int>(flip(germ.endpoint))];
                     if (!visited_switches[other_endpoint.sw])
                     {
                         self(self, other_endpoint.sw);
@@ -124,9 +132,9 @@ bool TrainTrack::finalize(const TrainTrackOptions &options)
     }
 
     // Set the position of each endpoint in the corresponding switch
-    for (auto &sw : switches)
+    for (auto& sw : switches)
     {
-        for (auto &conn : sw.connections)
+        for (auto& conn : sw.connections)
         {
             for (size_t i = 0; i < conn.size(); ++i)
             {
@@ -139,20 +147,24 @@ bool TrainTrack::finalize(const TrainTrackOptions &options)
     compute_complementary_regions(options);
 
     // Compute surface
-    const int euler_characteristic = int(switches.size()) - int(branches.size()) + int(complementary_regions.size());
+    const int euler_characteristic = static_cast<int>(switches.size()) - static_cast<int>(branches.size()) + static_cast
+        <int>(complementary_regions.size());
     if (euler_characteristic % 2 != 0)
     {
         throw std::runtime_error("Euler characteristic is not even");
     }
     surface.genus = (2 - euler_characteristic) / 2;
-    surface.punctures = std::accumulate(complementary_regions.begin(), complementary_regions.end(), 0u, [](unsigned int sum, const ComplementaryRegion &cr)
-                                        { return sum + cr.punctures; });
+    surface.punctures = std::accumulate(complementary_regions.begin(), complementary_regions.end(), 0u,
+                                        [](unsigned int sum, const ComplementaryRegion& cr)
+                                        {
+                                            return sum + cr.punctures;
+                                        });
 
     is_finalized = true;
     return true;
 }
 
-void TrainTrack::compute_complementary_regions(const TrainTrackOptions &options)
+void TrainTrack::compute_complementary_regions(const TrainTrackOptions& options)
 {
     std::array<std::vector<bool>, 2> visited;
     visited.fill(std::vector(branches.size(), false));
@@ -176,32 +188,36 @@ void TrainTrack::compute_complementary_regions(const TrainTrackOptions &options)
             {
                 boundary_sequence.push_back({b, side_of_branch});
                 visited[static_cast<int>(side_of_branch)][b] = true;
-                const auto [sw, sw_side, position, orientation] = branches[b].endpoints[static_cast<int>(flip(endpoint_index))];
-                const int next_position = int(position) + (side_of_branch == orientation ? -1 : 1);
+                const auto [sw, sw_side, position, orientation] = branches[b].endpoints[static_cast<int>(flip(
+                    endpoint_index))];
+                const int next_position = static_cast<int>(position) + (side_of_branch == orientation ? -1 : 1);
                 const int max_position = switches[sw].connections[static_cast<int>(sw_side)].size();
                 if (next_position == -1)
                 {
-                    const auto &germ = switches[sw].connections[static_cast<int>(flip(sw_side))].front();
+                    const auto& germ = switches[sw].connections[static_cast<int>(flip(sw_side))].front();
                     b = germ.branch;
                     endpoint_index = germ.endpoint;
                     side_of_branch = branches[b].endpoints[static_cast<int>(endpoint_index)].orientation;
                 }
                 else if (next_position == max_position)
                 {
-                    const auto &germ = switches[sw].connections[static_cast<int>(flip(sw_side))].back();
+                    const auto& germ = switches[sw].connections[static_cast<int>(flip(sw_side))].back();
                     b = germ.branch;
                     endpoint_index = germ.endpoint;
                     side_of_branch = flip(branches[b].endpoints[static_cast<int>(endpoint_index)].orientation);
                 }
                 else
                 {
-                    const auto &germ = switches[sw].connections[static_cast<int>(sw_side)][next_position];
+                    const auto& germ = switches[sw].connections[static_cast<int>(sw_side)][next_position];
                     b = germ.branch;
                     endpoint_index = germ.endpoint;
-                    side_of_branch = orientation == branches[b].endpoints[static_cast<int>(endpoint_index)].orientation ? flip(side_of_branch) : side_of_branch;
+                    side_of_branch = orientation == branches[b].endpoints[static_cast<int>(endpoint_index)].orientation
+                                         ? flip(side_of_branch)
+                                         : side_of_branch;
                     ++cusps;
                 }
-            } while (!visited[static_cast<int>(side_of_branch)][b]);
+            }
+            while (!visited[static_cast<int>(side_of_branch)][b]);
             unsigned int punctures = 0;
             if (options.add_punctures)
             {
@@ -214,7 +230,7 @@ void TrainTrack::compute_complementary_regions(const TrainTrackOptions &options)
                     punctures = 1;
                 }
             }
-            complementary_regions.push_back({cusps, punctures, boundary_sequence});
+            complementary_regions.push_back(ComplementaryRegion{cusps, punctures, boundary_sequence});
         }
     }
 }
@@ -229,24 +245,24 @@ std::vector<Measure<T>> TrainTrack::get_vertex_measures() const
 
     // Declare all fmpz and fmpz_mat variables
     fmpz_t int_denominator,
-        int_tmp;
+           int_tmp;
     fmpz_mat_t mat_switch_equations,
-        mat_nullspace_basis_extended,
-        mat_nullspace_basis,
-        mat_nullspace_basis_rre,
-        mat_nullspace_change_of_basis;
+               mat_nullspace_basis_extended,
+               mat_nullspace_basis,
+               mat_nullspace_basis_rre,
+               mat_nullspace_change_of_basis;
 
     // Matrix for switch equations
     fmpz_mat_init(mat_switch_equations, switches.size(), branches.size());
     fmpz_mat_zero(mat_switch_equations);
     for (size_t sw = 0; sw < switches.size(); ++sw)
     {
-        const auto &swc = switches[sw].connections;
-        for (const auto &germ : swc[static_cast<int>(LeftRight::Left)])
+        const auto& swc = switches[sw].connections;
+        for (const auto& germ : swc[static_cast<int>(LeftRight::Left)])
         {
             fmpz_set_si(fmpz_mat_entry(mat_switch_equations, sw, germ.branch), 1);
         }
-        for (const auto &germ : swc[static_cast<int>(LeftRight::Right)])
+        for (const auto& germ : swc[static_cast<int>(LeftRight::Right)])
         {
             fmpz_set_si(fmpz_mat_entry(mat_switch_equations, sw, germ.branch), -1);
         }
@@ -284,7 +300,8 @@ std::vector<Measure<T>> TrainTrack::get_vertex_measures() const
     {
         for (slong j = 0; j < nullspace_dim; ++j)
         {
-            fmpz_set(fmpz_mat_entry(mat_nullspace_change_of_basis, i, j), fmpz_mat_entry(mat_nullspace_basis, permutation[i], j));
+            fmpz_set(fmpz_mat_entry(mat_nullspace_change_of_basis, i, j),
+                     fmpz_mat_entry(mat_nullspace_basis, permutation[i], j));
         }
     }
     // std::cout << "mat_nullspace_change_of_basis matrix:" << std::endl;
@@ -328,21 +345,21 @@ std::vector<Measure<T>> TrainTrack::get_vertex_measures() const
 
     std::vector<Measure<T>> candidate_measures;
     std::vector<boost::dynamic_bitset<>> supports;
-    auto recursive = [&](auto &&self, Measure<T> &current, unsigned int index) -> void
+    auto recursive = [&](auto&& self, Measure<T>& current, unsigned int index) -> void
     {
         for (int i = 0; i <= 2; ++i)
         {
             if (index + 1 == nullspace_dim)
             {
-
                 if (
                     all_of(current,
                            _1 >= 0 &&
-                               _1 <= 2 * basis_measures_denominator &&
-                               !(_1 & (basis_measures_denominator - 1))) &&
+                           _1 <= 2 * basis_measures_denominator &&
+                           !(_1 & (basis_measures_denominator - 1))) &&
                     any_of(current, _1 == basis_measures_denominator))
                 {
-                    candidate_measures.emplace_back(current | views::transform(_1 >> (basis_measures_denominator - 1)) | to<Measure<T>>());
+                    candidate_measures.emplace_back(
+                        current | views::transform(_1 >> (basis_measures_denominator - 1)) | to<Measure<T>>());
                     supports.emplace_back(current | views::transform(_1 != 0) | to<boost::dynamic_bitset<>>());
                 }
             }
@@ -373,17 +390,21 @@ std::vector<Measure<T>> TrainTrack::get_vertex_measures() const
     // Extract measures of minimal support (i.e. vertex measures)
     sort(supports);
     std::set<boost::dynamic_bitset<>> vertex_supports;
-    for (const auto &s : supports)
+    for (const auto& s : supports)
     {
-        if (none_of(vertex_supports, [&](const auto &vs)
-                    { return vs.is_subset_of(s); }))
+        if (none_of(vertex_supports, [&](const auto& vs)
+        {
+            return vs.is_subset_of(s);
+        }))
         {
             vertex_supports.insert(s);
         }
     }
-    const auto vertex_measures = candidate_measures | views::filter([&](const auto &m)
-                                                                    { return vertex_supports.contains(m | views::transform(_1 != 0) | to<boost::dynamic_bitset<>>()); }) |
-                                 to<std::vector<Measure<T>>>();
+    const auto vertex_measures = candidate_measures | views::filter([&](const auto& m)
+        {
+            return vertex_supports.contains(m | views::transform(_1 != 0) | to<boost::dynamic_bitset<>>());
+        }) |
+        to<std::vector<Measure<T>>>();
 
     // Deallocate all the matrices
     fmpz_clear(int_denominator);
@@ -399,7 +420,7 @@ std::vector<Measure<T>> TrainTrack::get_vertex_measures() const
 }
 
 template <std::integral T>
-CarriedCurvesConfiguration configuration_from_carried_curves(const Measure<T> &m1, const Measure<T> &m2)
+CarriedCurvesConfiguration configuration_from_carried_curves(const Measure<T>& m1, const Measure<T>& m2)
 {
     CarriedCurvesConfiguration config;
     for (size_t i = 0; i < m1.size(); ++i)
@@ -415,7 +436,8 @@ CarriedCurvesConfiguration configuration_from_carried_curves(const Measure<T> &m
 }
 
 template <std::integral T, typename RNG>
-CarriedCurvesConfiguration random_configuration_from_carried_curves(RNG &rng, const Measure<T> &m1, const Measure<T> &m2)
+CarriedCurvesConfiguration random_configuration_from_carried_curves(RNG& rng, const Measure<T>& m1,
+                                                                    const Measure<T>& m2)
 {
     CarriedCurvesConfiguration config;
     for (size_t i = 0; i < m1.size(); ++i)
@@ -431,7 +453,7 @@ CarriedCurvesConfiguration random_configuration_from_carried_curves(RNG &rng, co
     return config;
 }
 
-unsigned long intersections_in_configuration(const TrainTrack &train_track, const CarriedCurvesConfiguration &config)
+unsigned long intersections_in_configuration(const TrainTrack& train_track, const CarriedCurvesConfiguration& config)
 {
     unsigned long intersections = 0;
     for (size_t sw = 0; sw < train_track.get_switches().size(); ++sw)
@@ -442,7 +464,9 @@ unsigned long intersections_in_configuration(const TrainTrack &train_track, cons
         int left_count = 0, right_count = 0;
         while (true)
         {
-            while (left_it != left_range.end() && config[train_track.get_switches()[sw].connections[static_cast<int>(LeftRight::Left)][left_it->connection_position].branch][left_it->position_on_branch] == FirstSecond::Second)
+            while (left_it != left_range.end() && config[train_track.get_switches()[sw].connections[static_cast<int>(
+                    LeftRight::Left)][left_it->connection_position].branch][left_it->position_on_branch] ==
+                FirstSecond::Second)
             {
                 ++left_it;
                 ++left_count;
@@ -451,7 +475,8 @@ unsigned long intersections_in_configuration(const TrainTrack &train_track, cons
             {
                 break;
             }
-            while (config[train_track.get_switches()[sw].connections[static_cast<int>(LeftRight::Right)][right_it->connection_position].branch][right_it->position_on_branch] == FirstSecond::Second)
+            while (config[train_track.get_switches()[sw].connections[static_cast<int>(LeftRight::Right)][right_it->
+                connection_position].branch][right_it->position_on_branch] == FirstSecond::Second)
             {
                 ++right_it;
                 ++right_count;
@@ -465,14 +490,15 @@ unsigned long intersections_in_configuration(const TrainTrack &train_track, cons
 }
 
 template <std::integral T>
-std::tuple<unsigned long, CarriedCurvesConfiguration> TrainTrack::compute_intersection_number(const Measure<T> &m1, const Measure<T> &m2) const
+std::tuple<unsigned long, CarriedCurvesConfiguration> TrainTrack::compute_intersection_number(
+    const Measure<T>& m1, const Measure<T>& m2) const
 {
     auto c = configuration_from_carried_curves(m1, m2);
     auto intersections = compute_intersection_number(c);
     return {intersections, c};
 }
 
-unsigned long TrainTrack::compute_intersection_number(CarriedCurvesConfiguration &c) const
+unsigned long TrainTrack::compute_intersection_number(CarriedCurvesConfiguration& c) const
 {
     if (!is_finalized)
     {
@@ -482,17 +508,19 @@ unsigned long TrainTrack::compute_intersection_number(CarriedCurvesConfiguration
     // FirstSecond::First = red, FirstSecond::Second = blue
     const auto get_color = [&](const size_t switch_, auto it_) // side_ is useless
     {
-        return c[switches[switch_].connections[static_cast<int>(it_.side)][it_->connection_position].branch][it_->position_on_branch];
+        return c[switches[switch_].connections[static_cast<int>(it_.side)][it_->connection_position].branch][it_->
+            position_on_branch];
     };
 
     // finds and removes bigon starting at it1 and it2 on switch0 side0
     // assumes they are of different colors and facing the same branch
     // returns true if a bigon was found and removed
-    const auto find_and_remove_bigon = [&](auto &&self, const size_t switch0, const LeftRight side0, auto it1, auto it2) -> bool
+    const auto find_and_remove_bigon = [&](auto&& self, const size_t switch0, const LeftRight side0, auto it1,
+                                           auto it2) -> bool
     {
-        const auto &conn = switches[switch0].connections[static_cast<int>(side0)][it1->connection_position];
-        const auto &branch = branches[conn.branch];
-        const auto &other_endpoint = branch.endpoints[static_cast<int>(flip(conn.endpoint))];
+        const auto& conn = switches[switch0].connections[static_cast<int>(side0)][it1->connection_position];
+        const auto& branch = branches[conn.branch];
+        const auto& other_endpoint = branch.endpoints[static_cast<int>(flip(conn.endpoint))];
         const auto switch1 = other_endpoint.sw;
         const auto side1 = other_endpoint.side;
         auto it3 = ConfigurationSwitchEndpointsRange(*this, c, switch1, side1).begin(),
@@ -509,11 +537,13 @@ unsigned long TrainTrack::compute_intersection_number(CarriedCurvesConfiguration
             {
                 --reds_on_side1_minus_other_side1;
             }
-            if (it3->connection_position == other_endpoint.position && (it3->position_on_branch == it1->position_on_branch || it3->position_on_branch == it2->position_on_branch))
+            if (it3->connection_position == other_endpoint.position && (it3->position_on_branch == it1->
+                position_on_branch || it3->position_on_branch == it2->position_on_branch))
             {
                 const auto it_4 = it_3++;
                 if (reds_on_side1_minus_other_side1 == 0 && color_3 == color3 && get_color(switch1, it_3) != color3)
-                { // bigon keeps going
+                {
+                    // bigon keeps going
                     if (it_3->connection_position != it_4->connection_position)
                     {
                         return false;
@@ -528,13 +558,16 @@ unsigned long TrainTrack::compute_intersection_number(CarriedCurvesConfiguration
                         return false;
                     }
                 }
-                else if ((color3 == FirstSecond::First && reds_on_side1_minus_other_side1 > 0) || (color3 == FirstSecond::Second && reds_on_side1_minus_other_side1 < 0))
-                { // bigon closes up
+                else if ((color3 == FirstSecond::First && reds_on_side1_minus_other_side1 > 0) || (color3 ==
+                    FirstSecond::Second && reds_on_side1_minus_other_side1 < 0))
+                {
+                    // bigon closes up
                     std::swap(c[conn.branch][it1->position_on_branch], c[conn.branch][it2->position_on_branch]);
                     return true;
                 }
                 else
-                { // there was no bigon after all
+                {
+                    // there was no bigon after all
                     return false;
                 }
             }
@@ -564,7 +597,8 @@ unsigned long TrainTrack::compute_intersection_number(CarriedCurvesConfiguration
                     continue;
                 }
                 auto it1 = it2++;
-                auto it_1 = ConfigurationSwitchEndpointsRange(*this, c, sw, flip(side)).begin(); // Iterator matching it1 on other side
+                auto it_1 = ConfigurationSwitchEndpointsRange(*this, c, sw, flip(side)).begin();
+                // Iterator matching it1 on other side
                 int reds_on_side = 0, reds_on_other_side = 0;
                 while (it2 != range.end())
                 {
@@ -574,7 +608,9 @@ unsigned long TrainTrack::compute_intersection_number(CarriedCurvesConfiguration
                     {
                         const auto color1 = get_color(sw, it1),
                                    color2 = get_color(sw, it2);
-                        if (color1 != color2 && ((color1 == FirstSecond::First && reds_on_side > reds_on_other_side) || (color1 == FirstSecond::Second && reds_on_side < reds_on_other_side))) // if different colour && crossing
+                        if (color1 != color2 && ((color1 == FirstSecond::First && reds_on_side > reds_on_other_side) ||
+                            (color1 == FirstSecond::Second && reds_on_side < reds_on_other_side)))
+                        // if different colour && crossing
                         {
                             if (find_and_remove_bigon(find_and_remove_bigon, sw, side, it1, it2))
                             {
@@ -597,12 +633,13 @@ unsigned long TrainTrack::compute_intersection_number(CarriedCurvesConfiguration
                 break;
             }
         }
-    } while (found_bigon);
+    }
+    while (found_bigon);
     return intersections;
 }
 
 template <typename URBG>
-TrainTrack TrainTrack::random_trivalent_train_track(URBG &rng, size_t switches_count, const TrainTrackOptions &options)
+TrainTrack TrainTrack::random_trivalent_train_track(URBG& rng, size_t switches_count, const TrainTrackOptions& options)
 {
     if (switches_count % 2 != 0)
     {
@@ -648,13 +685,19 @@ TrainTrack TrainTrack::random_trivalent_train_track(URBG &rng, size_t switches_c
     }
 }
 
-ConfigurationSwitchEndpointsRange::ConfigurationSwitchEndpointsRange(const TrainTrack &tt, const CarriedCurvesConfiguration &config, size_t sw_index, LeftRight side)
+ConfigurationSwitchEndpointsRange::ConfigurationSwitchEndpointsRange(const TrainTrack& tt,
+                                                                     const CarriedCurvesConfiguration& config,
+                                                                     size_t sw_index, LeftRight side)
     : train_track(tt), configuration(config), switch_index(sw_index), side(side)
 {
 }
 
-ConfigurationSwitchEndpointsRange::Iterator::Iterator(const TrainTrack &train_track, const CarriedCurvesConfiguration &configuration, size_t switch_index, LeftRight side, size_t connection_position, int position_on_branch)
-    : train_track(train_track), configuration(configuration), switch_index(switch_index), side(side), value{connection_position, position_on_branch}
+ConfigurationSwitchEndpointsRange::Iterator::Iterator(const TrainTrack& train_track,
+                                                      const CarriedCurvesConfiguration& configuration,
+                                                      size_t switch_index, LeftRight side, size_t connection_position,
+                                                      int position_on_branch)
+    : train_track(train_track), configuration(configuration), switch_index(switch_index), side(side),
+      value{connection_position, position_on_branch}
 {
 }
 
@@ -669,34 +712,37 @@ auto ConfigurationSwitchEndpointsRange::Iterator::operator->() const -> pointer
 }
 
 // only works if same train track, switch, side, configuration
-auto ConfigurationSwitchEndpointsRange::Iterator::operator=(const Iterator &other) -> Iterator &
+auto ConfigurationSwitchEndpointsRange::Iterator::operator=(const Iterator& other) -> Iterator&
 {
     value = other.value;
     return *this;
 }
 
-bool ConfigurationSwitchEndpointsRange::Iterator::operator==(const Iterator &other) const
+bool ConfigurationSwitchEndpointsRange::Iterator::operator==(const Iterator& other) const
 {
     return value.connection_position == other.value.connection_position &&
-           value.position_on_branch == other.value.position_on_branch;
+        value.position_on_branch == other.value.position_on_branch;
 }
 
-bool ConfigurationSwitchEndpointsRange::Iterator::operator!=(const Iterator &other) const
+bool ConfigurationSwitchEndpointsRange::Iterator::operator!=(const Iterator& other) const
 {
     return !(*this == other);
 }
 
-auto ConfigurationSwitchEndpointsRange::Iterator::skip_empty_branches() -> Iterator &
+auto ConfigurationSwitchEndpointsRange::Iterator::skip_empty_branches() -> Iterator&
 {
-    const auto &conns = train_track.get_switches()[switch_index].connections[static_cast<int>(side)];
+    const auto& conns = train_track.get_switches()[switch_index].connections[static_cast<int>(side)];
     while (value.connection_position < conns.size() && configuration[conns[value.connection_position].branch].empty())
     {
         ++value.connection_position;
     }
     if (value.connection_position < conns.size())
     {
-        const auto &c = conns[value.connection_position];
-        value.position_on_branch = train_track.get_branches()[c.branch].endpoints[static_cast<int>(c.endpoint)].orientation == UpDown::Up ? 0 : static_cast<int>(configuration[c.branch].size() - 1);
+        const auto& c = conns[value.connection_position];
+        value.position_on_branch = train_track.get_branches()[c.branch].endpoints[static_cast<int>(c.endpoint)].
+                                   orientation == UpDown::Up
+                                       ? 0
+                                       : static_cast<int>(configuration[c.branch].size() - 1);
     }
     else
     {
@@ -705,10 +751,10 @@ auto ConfigurationSwitchEndpointsRange::Iterator::skip_empty_branches() -> Itera
     return *this;
 }
 
-auto ConfigurationSwitchEndpointsRange::Iterator::operator++() -> Iterator &
+auto ConfigurationSwitchEndpointsRange::Iterator::operator++() -> Iterator&
 {
-    const auto &conns = train_track.get_switches()[switch_index].connections[static_cast<int>(side)];
-    const auto &c = conns[value.connection_position];
+    const auto& conns = train_track.get_switches()[switch_index].connections[static_cast<int>(side)];
+    const auto& c = conns[value.connection_position];
     if (train_track.get_branches()[c.branch].endpoints[static_cast<int>(c.endpoint)].orientation == UpDown::Up)
     {
         if (static_cast<size_t>(++value.position_on_branch) >= configuration[c.branch].size())
@@ -737,39 +783,47 @@ auto ConfigurationSwitchEndpointsRange::Iterator::operator++(int) -> Iterator
 
 auto ConfigurationSwitchEndpointsRange::begin() const -> Iterator
 {
-    const auto &conns = train_track.get_switches()[switch_index].connections[static_cast<int>(side)];
+    const auto& conns = train_track.get_switches()[switch_index].connections[static_cast<int>(side)];
     auto it = Iterator(train_track, configuration, switch_index, side, 0, 0);
     it.skip_empty_branches();
     if (it->connection_position >= conns.size())
     {
-        return Iterator(train_track, configuration, switch_index, side, conns.size(), 0);
+        return {train_track, configuration, switch_index, side, conns.size(), 0};
     }
-    const auto &c = conns[it->connection_position];
-    const int position_on_branch = train_track.get_branches()[c.branch].endpoints[static_cast<int>(c.endpoint)].orientation == UpDown::Up ? 0 : static_cast<int>(configuration[c.branch].size() - 1);
-    return Iterator(train_track, configuration, switch_index, side, it->connection_position, position_on_branch);
+    const auto& c = conns[it->connection_position];
+    const int position_on_branch = train_track.get_branches()[c.branch].endpoints[static_cast<int>(c.endpoint)].
+                                   orientation == UpDown::Up
+                                       ? 0
+                                       : static_cast<int>(configuration[c.branch].size() - 1);
+    return {train_track, configuration, switch_index, side, it->connection_position, position_on_branch};
 }
 
 auto ConfigurationSwitchEndpointsRange::end() const -> Iterator
 {
-    return Iterator(train_track, configuration, switch_index, side, train_track.get_switches()[switch_index].connections[static_cast<int>(side)].size(), 0);
+    return {
+        train_track, configuration, switch_index, side,
+        train_track.get_switches()[switch_index].connections[static_cast<int>(side)].size(), 0
+    };
 }
 
-NLOHMANN_JSON_SERIALIZE_ENUM(LeftRight, {{LeftRight::Left, 0}, {LeftRight::Right, 1}});
+NLOHMANN_JSON_SERIALIZE_ENUM(LeftRight, {{LeftRight::Left, "0"}, {LeftRight::Right, "1"}});
 NLOHMANN_JSON_SERIALIZE_ENUM(UpDown, {{UpDown::Up, "up"}, {UpDown::Down, "down"}});
-NLOHMANN_JSON_SERIALIZE_ENUM(FirstSecond, {{FirstSecond::First, 0}, {FirstSecond::Second, 1}});
+NLOHMANN_JSON_SERIALIZE_ENUM(FirstSecond, {{FirstSecond::First, "0"}, {FirstSecond::Second, "1"}});
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::ComplementaryRegion::BranchSide, branch, side);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::ComplementaryRegion, cusps, punctures, boundary);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::Surface, genus, punctures);
 
-void to_json(nlohmann::json &j, const TrainTrack::Branch::Endpoint &e)
+void to_json(nlohmann::json& j, const TrainTrack::Branch::Endpoint& e)
 {
     j = nlohmann::json{
         {"switch", e.sw},
         {"side", e.side},
         {"position", e.position},
-        {"orientation", e.orientation}};
+        {"orientation", e.orientation}
+    };
 }
-void from_json(const nlohmann::json &j, TrainTrack::Branch::Endpoint &e)
+
+void from_json(const nlohmann::json& j, TrainTrack::Branch::Endpoint& e)
 {
     j.at("switch").get_to(e.sw);
     j.at("side").get_to(e.side);
@@ -781,7 +835,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::Branch, endpoints);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::Switch::Germ, branch, endpoint);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TrainTrack::Switch, connections);
 
-void to_json(nlohmann::json &j, const TrainTrack &tt)
+void to_json(nlohmann::json& j, const TrainTrack& tt)
 {
     if (!tt.is_finalized)
     {
@@ -791,10 +845,11 @@ void to_json(nlohmann::json &j, const TrainTrack &tt)
         {"switches", tt.get_switches()},
         {"branches", tt.get_branches()},
         {"complementaryRegions", tt.complementary_regions},
-        {"surface", tt.get_surface()}};
+        {"surface", tt.get_surface()}
+    };
 }
 
-void from_json(const nlohmann::json &j, TrainTrack &tt)
+void from_json(const nlohmann::json& j, TrainTrack& tt)
 {
     j.at("switches").get_to(tt.switches);
     j.at("branches").get_to(tt.branches);
